@@ -4,8 +4,8 @@ import nibabel as nib
 from os.path import exists
 import pandas as pd
 import spm
-import qc_utils
 from scipy import signal
+from qc_utils import qc_utils
 
 
 class analysis(object):
@@ -15,6 +15,16 @@ class analysis(object):
 
     @staticmethod
     def ncc(img1_path, img2_path):
+        """Calculates the normalized cross correlation (NCC) between two images.
+
+        :param img1_path: the path to the first image
+        :type img1_path: str
+        :param img2_path: the path to the second image
+        :type img2_path: str
+        :return: the NCC value between the two images
+        :rtype: float
+        """
+
         # Load Nifti images
         img1 = nib.load(img1_path)
         img2 = nib.load(img2_path)
@@ -39,7 +49,19 @@ class analysis(object):
     @staticmethod
     def optimize_smoothing_group_ncc(spm_path, img_group_paths, template_path, sigma_range):
 
-        from scipy.ndimage import gaussian_filter
+        """Optimizes the smoothing of a group of images using a Gaussian filter and the spm library.
+
+        :param spm_path: the path to the spm executable
+        :type spm_path: str
+        :param img_group_paths: a list of paths to the images to be smoothed
+        :type img_group_paths: list
+        :param template_path: the path to the image that is used as a template which the imgs at img_group_paths should match
+        :type template_path: str
+        :param sigma_range: a list of sigma values for the Gaussian filter
+        :type sigma_range: list
+        :return: the best sigma value for the Gaussian filter and the best normalized cross correlation value
+        :rtype: float, float
+        """
 
         best_ncc = -np.inf
         best_sigma = None
@@ -92,6 +114,19 @@ class analysis(object):
     @staticmethod
     def image_to_image_corr_atlas_based_spearsman(image_1, image_2, atlas):
 
+        """Calculates the spearman correlation coefficient and p-value between two images using
+        the atlas ROI-values extracted for each region of interest (ROI) defined by an atlas.
+
+        :param image_1: the path to the first image
+        :type image_1: str
+        :param image_2: the path to the second image
+        :type image_2: str
+        :param atlas: the path to the atlas image that defines the ROIs
+        :type atlas: str
+        :return: the spearman correlation coefficient and the p-value between the two images for each ROI
+        :rtype: float, float
+        """
+
         from scipy.stats import spearmanr
 
         # Load the two images + atlas using nibabel library
@@ -133,7 +168,19 @@ class analysis(object):
     @staticmethod
     def normalize_using_ref_region(input_image, output_image, ref_region):
 
-        qc_utils.qc_utils._check_image_exists(input_image)
+        """Normalizes an image using a reference region.
+
+        :param input_image: the path to the input image
+        :type input_image: str
+        :param output_image: the path to the output image
+        :type output_image: str
+        :param ref_region: the path to the reference region image
+        :type ref_region: str
+        :return: None
+        :rtype: None
+        """
+
+        qc_utils._check_image_exists(input_image)
 
         pons_img = nib.load(ref_region).get_fdata()
         pons_img = pons_img[:, :, :, 0]
@@ -151,6 +198,20 @@ class analysis(object):
 
     @staticmethod
     def normalize_histogram(input_image, template, mask, output):
+        """Normalizes an image using the mode of an intensity histogram.
+        More info at: https://pubmed.ncbi.nlm.nih.gov/32771619/
+
+        :param input_image: the path to the input image
+        :type input_image: str
+        :param template: the path to the template image
+        :type template: str
+        :param mask: the path to the mask image
+        :type mask: str
+        :param output: the path to the output image
+        :type output: str
+        :return: the normalization value used to scale the input image
+        :rtype: float
+        """
 
         fdg = nib.load(input_image)
         template = nib.load(template)
@@ -180,6 +241,18 @@ class analysis(object):
 
     @staticmethod
     def histogram_matching(reference_nii, input_nii, output_nii):
+
+        """Matches the histogram of an input image to a reference image.
+
+        :param reference_nii: the path to the reference image
+        :type reference_nii: str
+        :param input_nii: the path to the input image
+        :type input_nii: str
+        :param output_nii: the path to the output image
+        :type output_nii: str
+        :return: None
+        :rtype: None
+        """
 
         # Load the template image
         template = nib.load(reference_nii)
@@ -224,6 +297,22 @@ class analysis(object):
 
     @staticmethod
     def logpow_histogram_matching(reference_nii, input_nii, output_nii, alpha=1, beta=3):
+        """Matches the histogram of an input image to a reference image using a log-power transformation.
+        More info: https://doi.org/10.1117/1.JEI.23.6.063017
+
+        :param reference_nii: the path to the reference image
+        :type reference_nii: str
+        :param input_nii: the path to the input image
+        :type input_nii: str
+        :param output_nii: the path to the output image
+        :type output_nii: str
+        :param alpha: the additive constant for the log transformation, defaults to 1
+        :type alpha: int, optional
+        :param beta: the power exponent for the log transformation, defaults to 3
+        :type beta: int, optional
+        :return: the path to the output image
+        :rtype: str
+        """
 
         # Load the template image
         template = nib.load(reference_nii)
@@ -271,6 +360,21 @@ class analysis(object):
 
     @staticmethod
     def bi_histogram_matching(reference_nii, input_nii, output_nii, nbins=256):
+        """This function performs a bi-directional histogram matching between a reference image and an input image,
+        and saves the output image in a nifti file.
+
+        :param reference_nii: the name of the nifti file that contains the reference image
+        :type reference_nii: str
+        :param input_nii: the name of the nifti file that contains the input image
+        :type input_nii: str
+        :param output_nii: the name of the nifti file that will contain the output image
+        :type output_nii: str
+        :param nbins: the number of bins to use for the histogram matching, defaults to 256
+        :type nbins: int
+        :return: the path to the output normalized Nifti image
+        :rtype: str
+        """
+
 
         # Load and prepare the template image
         template = nib.load(reference_nii)
@@ -362,6 +466,23 @@ class analysis(object):
 
     @staticmethod
     def exact_histogram_matching(reference_nii, input_nii, output_nii, number_kernels=3, nbins=1024):
+        """This function performs an exact histogram matching between a reference image and an input image,
+        and saves the output image in a nifti file.
+        More information: 10.1109/TIP.2005.864170
+
+        :param reference_nii: the name of the nifti file that contains the reference image
+        :type reference_nii: str
+        :param input_nii: the name of the nifti file that contains the input image
+        :type input_nii: str
+        :param output_nii: the name of the nifti file that will contain the output image
+        :type output_nii: str
+        :param number_kernels: the number of kernels to use for the exact histogram matching, defaults to 3
+        :type number_kernels: int
+        :param nbins: the number of bins to use for the histogram matching, defaults to 1024
+        :type nbins: int
+        :return: the name of the nifti file that contains the output image
+        :rtype: str
+        """
 
         template = nib.load(reference_nii)
         nt_data = template.get_data()[:, :, :]
@@ -383,6 +504,20 @@ class analysis(object):
 
     @staticmethod
     def create_atlas_csv(normals, output_csv, atlas_csv, atlas_hdr):
+        """This function creates a csv file with the mean and standard deviation of the ROI values for a list of
+        images, based on an atlas csv and hdr file.
+
+        :param normals: a list of strings containing the names of the nifti files that contain the images to be processed
+        :type normals: list
+        :param output_csv: the name of the csv file that will contain the output data
+        :type output_csv: str
+        :param atlas_csv: the name of the csv file that contains the atlas information, such as ROI_NUM and ROI_NAME
+        :type atlas_csv: str
+        :param atlas_hdr: the name of the hdr file that contains the atlas image
+        :type atlas_hdr: str
+        :return: None
+        :rtype: None
+        """
 
         atlas_df = pd.read_csv(atlas_csv)
         atlas_img = nib.load(atlas_hdr)
@@ -414,6 +549,20 @@ class analysis(object):
 
     @staticmethod
     def create_atlas_csv_from_patsegs(normals, atlases, output_csv, atlas_csv):
+        """This function creates a csv file with the mean and standard deviation of the ROI values for a list of images,
+        based on an atlas csv file and a list of atlas images.
+
+        :param normals: a list of strings containing the names of the nifti files that contain the images to be processed
+        :type normals: list
+        :param atlases: a list of strings containing the names of the nifti files that contain the atlas images corresponding to the images in normals
+        :type atlases: list
+        :param output_csv: the name of the csv file that will contain the output data
+        :type output_csv: str
+        :param atlas_csv: the name of the csv file that contains the atlas information, such as ROI_NUM and ROI_NAME
+        :type atlas_csv: str
+        :return: None
+        :rtype: None
+        """
 
         import math
 
@@ -452,6 +601,20 @@ class analysis(object):
 
     @staticmethod
     def transform_img_to_atlas_zscores(img_, out, atlas_csv, atlas_hdr):
+        """This function transforms an image to atlas z-scores, based on an atlas csv and hdr file,
+        and saves the output image in a nifti file.
+
+        :param img_: the name of the nifti file that contains the image to be transformed
+        :type img_: str
+        :param out: the name of the nifti file that will contain the output image
+        :type out: str
+        :param atlas_csv: the name of the csv file that contains the atlas information, such as ROI_NUM, ROI_MEAN and ROI_STD
+        :type atlas_csv: str
+        :param atlas_hdr: the name of the hdr file that contains the atlas image
+        :type atlas_hdr: str
+        :return: None
+        :rtype: None
+        """
 
         atlas_csv = atlas_csv
         atlas_df = pd.read_csv(atlas_csv)
@@ -485,9 +648,17 @@ class analysis(object):
 
     @staticmethod
     def create_mean_std_imgs(images, output_mean, output_std):
+        """This function creates the mean and standard deviation images for a list of images,
+        and saves them in nifti files.
 
-        """
-        For a list of images, creates the mean and std images
+        :param images: a list of strings containing the names of the nifti files that contain the images to be processed
+        :type images: list
+        :param output_mean: the name of the nifti file that will contain the mean image
+        :type output_mean: str
+        :param output_std: the name of the nifti file that will contain the standard deviation image
+        :type output_std: str
+        :return: None
+        :rtype: None
         """
 
         sample_nii = images[0]

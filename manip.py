@@ -8,6 +8,14 @@ class manip(object):
 
     @staticmethod
     def convert_to_analyze(nii_file):
+        """This function converts a nifti file to an analyze file and saves it in the same directory.
+
+        :param nii_file: the name of the nifti file to be converted
+        :type nii_file: str
+        :return: the name of the analyze file that was created
+        :rtype: str
+        """
+
         # Load the NIFTI image using nibabel
         img = nib.load(nii_file)
 
@@ -26,11 +34,17 @@ class manip(object):
 
     @staticmethod
     def apply_constant_to_img(image, c, operation, output=False):
-        """
-        :param image:
-        :param c:
-        :param operation:
-        :param output:
+        """This function applies a constant to an image using a specified operation, and saves the result in a new image.
+
+        :param image: the name of the image file to be processed
+        :type image: str
+        :param c: the constant to be applied to the image
+        :type c: float
+        :param operation: the operation to be performed on the image. It can be 'mult', 'div' or 'sum'
+        :type operation: str
+        :param output: the name of the output image file. If False, the output file will have the same name as the input file
+        :type output: str or bool
+        :return: None
         """
         if output:
             output_file = output
