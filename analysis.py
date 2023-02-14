@@ -5,6 +5,7 @@ from os.path import exists
 import pandas as pd
 import spm
 import qc_utils
+from scipy import signal
 
 
 class analysis(object):
@@ -178,6 +179,209 @@ class analysis(object):
         return norm_value
 
     @staticmethod
+    def histogram_matching(reference_nii, input_nii, output_nii):
+
+        # Load the template image
+        template = nib.load(reference_nii)
+        nt_data = template.get_data()[:, :, :]
+
+        # Load the patient image
+        patient = nib.load(input_nii)
+        pt_data = patient.get_data()[:, :, :]
+
+        # Stores the image data shape that will be used later
+        oldshape = pt_data.shape
+
+        # Converts the data arrays to single dimension and normalizes by the maximum
+        nt_data_array = nt_data.ravel()
+        pt_data_array = pt_data.ravel()
+
+        # get the set of unique pixel values and their corresponding indices and counts
+        s_values, bin_idx, s_counts = np.unique(pt_data_array, return_inverse=True, return_counts=True)
+        t_values, t_counts = np.unique(nt_data_array, return_counts=True)
+
+        # take the cumsum of the counts and normalize by the number of pixels to
+        # get the empirical cumulative distribution functions for the source and
+        # template images (maps pixel value --> quantile)
+        s_quantiles = np.cumsum(s_counts).astype(np.float64)
+        s_quantiles /= s_quantiles[-1]
+        t_quantiles = np.cumsum(t_counts).astype(np.float64)
+        t_quantiles /= t_quantiles[-1]
+
+        # interpolate linearly to find the pixel values in the template image
+        # that correspond most closely to the quantiles in the source image
+        interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+
+        # Reshapes the corresponding values to the indexes and reshapes the array to input
+        final_image_data = interp_t_values[bin_idx].reshape(oldshape)
+        # final_image_data[indx] = 0
+
+        # Saves the output data
+        img = nib.Nifti1Image(final_image_data, patient.affine, patient.header)
+        nib.save(img, output_nii)
+
+        return
+
+    @staticmethod
+    def logpow_histogram_matching(reference_nii, input_nii, output_nii, alpha=1, beta=3):
+
+        # Load the template image
+        template = nib.load(reference_nii)
+        nt_data = template.get_data()[:, :, :]
+
+        # Load the patient image
+        patient = nib.load(input_nii)
+        pt_data = patient.get_data()[:, :, :]
+
+        # Stores the image data shape that will be used later
+        oldshape = pt_data.shape
+
+        # Converts the data arrays to single dimension and normalizes by the maximum
+        nt_data_array = nt_data.ravel()
+        pt_data_array = pt_data.ravel()
+
+        # get the set of unique pixel values and their corresponding indices and counts
+        s_values, bin_idx, s_counts = np.unique(pt_data_array, return_inverse=True, return_counts=True)
+        t_values, t_counts = np.unique(nt_data_array, return_counts=True)
+
+        s_counts = np.power(np.log10(s_counts + alpha), beta)
+        t_counts = np.power(np.log10(t_counts + alpha), beta)
+
+        # take the cumsum of the counts and normalize by the number of pixels to
+        # get the empirical cumulative distribution functions for the source and
+        # template images (maps pixel value --> quantile)
+        s_quantiles = np.cumsum(s_counts).astype(np.float64)
+        s_quantiles /= s_quantiles[-1]
+        t_quantiles = np.cumsum(t_counts).astype(np.float64)
+        t_quantiles /= t_quantiles[-1]
+
+        # interpolate linearly to find the pixel values in the template image
+        # that correspond most closely to the quantiles in the source image
+        interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+
+        # Reshapes the corresponding values to the indexes and reshapes the array to input
+        final_image_data = interp_t_values[bin_idx].reshape(oldshape)
+        # final_image_data[indx] = 0
+
+        # Saves the output data
+        img = nib.Nifti1Image(final_image_data, patient.affine, patient.header)
+        nib.save(img, output_nii)
+
+        return output_nii
+
+    @staticmethod
+    def bi_histogram_matching(reference_nii, input_nii, output_nii, nbins=256):
+
+        # Load and prepare the template image
+        template = nib.load(reference_nii)
+        nt_data = template.get_data()[:, :, :]
+        indx = np.where(nt_data < 0)
+        # Set array values in the interval to val
+        nt_data[indx] = 0
+        nt_max = np.amax(nt_data)
+        nt_data = ((nbins - 1) / nt_max) * nt_data
+
+        # Load and prepare the patient image
+        patient = nib.load(input_nii)
+        pt_data = patient.get_data()[:, :, :]
+        indx = np.where(pt_data < 0)
+        # Set array values in the interval to val
+        pt_data[indx] = 0
+        pt_max = np.amax(pt_data)
+        pt_data = (255 / pt_max) * pt_data
+        oldshape = pt_data.shape
+
+        # We adjust first the low part of the histogram
+        nt_data_low = nt_data
+        indx = np.where(nt_data > (nbins / 2))
+        nt_data_low[indx] = 0
+        pt_data_low = pt_data
+        indx = np.where(pt_data > (nbins / 2))
+        pt_data_low[indx] = 0
+        # We save data_low just for checking for the moment
+        img = nib.Nifti1Image(pt_data_low, patient.affine, patient.header)
+        nib.save(img, input_nii[0:-4] + '_low.nii')
+
+        # Converts the data arrays to single dimension and histograms the first part of the data
+        nt_data_array = nt_data_low.ravel()
+        pt_data_array = pt_data_low.ravel()
+        s_values, bin_idx, s_counts = np.unique(pt_data_array, return_inverse=True, return_counts=True)
+        t_values, t_counts = np.unique(nt_data_array, return_counts=True)
+        s_quantiles = np.cumsum(s_counts).astype(np.float64)
+        s_quantiles /= s_quantiles[-1]
+        t_quantiles = np.cumsum(t_counts).astype(np.float64)
+        t_quantiles /= t_quantiles[-1]
+        interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+        final_image_data_low = interp_t_values[bin_idx].reshape(oldshape)
+
+        # We prepare now to adjust the second part of the histogram
+        nt_data = template.get_data()[:, :, :]
+        indx = np.where(nt_data < 0)
+        nt_data[indx] = 0
+        nt_max = np.amax(nt_data)
+        nt_data = ((nbins - 1) / nt_max) * nt_data
+
+        pt_data = patient.get_data()[:, :, :]
+        indx = np.where(pt_data < 0)
+        pt_data[indx] = 0
+        pt_max = np.amax(pt_data)
+        pt_data = ((nbins - 1) / pt_max) * pt_data
+        oldshape = pt_data.shape
+
+        nt_data_high = nt_data
+        indx = np.where(nt_data <= (nbins / 2))
+        nt_data_high[indx] = 0
+        indx = np.where(nt_data > (nbins / 2))
+        nt_data_high[indx] = nt_data_high[indx] - (nbins / 2)
+        pt_data_high = pt_data
+        indx = np.where(pt_data <= (nbins / 2))
+        pt_data_high[indx] = 0
+        indx_pth = np.where(pt_data_high > (nbins / 2))
+        pt_data_high[indx_pth] = pt_data_high[indx_pth] - (nbins / 2)
+
+        # Converts the data arrays to single dimension and histograms the second part of the data
+        nt_data_array = nt_data_high.ravel()
+        pt_data_array = pt_data_high.ravel()
+        s_values, bin_idx, s_counts = np.unique(pt_data_array, return_inverse=True, return_counts=True)
+        t_values, t_counts = np.unique(nt_data_array, return_counts=True)
+        s_quantiles = np.cumsum(s_counts).astype(np.float64)
+        s_quantiles /= s_quantiles[-1]
+        t_quantiles = np.cumsum(t_counts).astype(np.float64)
+        t_quantiles /= t_quantiles[-1]
+        interp_t_values = np.interp(s_quantiles, t_quantiles, t_values)
+        final_image_data_high = interp_t_values[bin_idx].reshape(oldshape)
+
+        final_image_data_high[indx_pth] = final_image_data_high[indx_pth] + 128
+        final_image_data = final_image_data_high + final_image_data_low
+
+        # Saves the output data
+        img = nib.Nifti1Image(final_image_data, patient.affine, patient.header)
+        nib.save(img, output_nii)
+
+        return output_nii
+
+    @staticmethod
+    def exact_histogram_matching(reference_nii, input_nii, output_nii, number_kernels=3, nbins=1024):
+
+        template = nib.load(reference_nii)
+        nt_data = template.get_data()[:, :, :]
+        scaled_nt_data = np.round((nbins - 1) * (nt_data / np.max(nt_data)))
+        scaled_nt_data = np.asarray(scaled_nt_data, np.uint16)
+
+        patient = nib.load(input_nii)
+        pt_data = patient.get_data()[:, :, :]
+        scaled_pt_data = np.round((nbins - 1) * (pt_data / np.max(pt_data)))
+        scaled_pt_data = np.asarray(scaled_pt_data, np.uint16)
+
+        reference_histogram = ExactHistogramMatcher.get_histogram(scaled_nt_data, 10)
+        matched_img = ExactHistogramMatcher.match_image_to_histogram(pt_data, reference_histogram, number_kernels)
+
+        img = nib.Nifti1Image(matched_img, patient.affine, patient.header)
+        nib.save(img, output_nii)
+
+        return output_nii
+
+    @staticmethod
     def create_atlas_csv(normals, output_csv, atlas_csv, atlas_hdr):
 
         atlas_df = pd.read_csv(atlas_csv)
@@ -316,3 +520,174 @@ class analysis(object):
         nib.save(mean_img, output_mean)
         std_img = nib.AnalyzeImage(std_data, sample_img.affine, sample_img.header)
         nib.save(std_img, output_std)
+
+
+class ExactHistogramMatcher:
+    _kernel1 = 1.0 / 5.0 * np.array([[0, 1, 0],
+                                     [1, 1, 1],
+                                     [0, 1, 0]])
+
+    _kernel2 = 1.0 / 9.0 * np.array([[1, 1, 1],
+                                     [1, 1, 1],
+                                     [1, 1, 1]])
+
+    _kernel3 = 1.0 / 13.0 * np.array([[0, 0, 1, 0, 0],
+                                      [0, 1, 1, 1, 0],
+                                      [1, 1, 1, 1, 1],
+                                      [0, 1, 1, 1, 0],
+                                      [0, 0, 1, 0, 0]])
+
+    _kernel4 = 1.0 / 21.0 * np.array([[0, 1, 1, 1, 0],
+                                      [1, 1, 1, 1, 1],
+                                      [1, 1, 1, 1, 1],
+                                      [1, 1, 1, 1, 1],
+                                      [0, 1, 1, 1, 0]])
+
+    _kernel5 = 1.0 / 25.0 * np.array([[1, 1, 1, 1, 1],
+                                      [1, 1, 1, 1, 1],
+                                      [1, 1, 1, 1, 1],
+                                      [1, 1, 1, 1, 1],
+                                      [1, 1, 1, 1, 1]])
+    _kernel_mapping = {1: [_kernel1],
+                       2: [_kernel1, _kernel2],
+                       3: [_kernel1, _kernel2, _kernel3],
+                       4: [_kernel1, _kernel2, _kernel3, _kernel4],
+                       5: [_kernel1, _kernel2, _kernel3, _kernel4, _kernel5]}
+
+    @staticmethod
+    def get_histogram(image, image_bit_depth=8):
+        """
+        :param image: image as numpy array
+        :param image_bit_depth: bit depth of the image. Most images have 8 bit.
+        :return:
+        """
+        max_grey_value = pow(2, image_bit_depth)
+
+        if len(image.shape) == 3:
+            dimensions = image.shape[2]
+            hist = np.empty((max_grey_value, dimensions))
+
+            for dimension in range(0, dimensions):
+                for gray_value in range(0, max_grey_value):
+                    image_2d = image[:, :, dimension]
+                    hist[gray_value, dimension] = len(image_2d[image_2d == gray_value])
+        else:
+            hist = np.empty((max_grey_value,))
+
+            for gray_value in range(0, max_grey_value):
+                hist[gray_value] = len(image[image == gray_value])
+
+        return hist
+
+    @staticmethod
+    def _get_averaged_images(img, kernels):
+        return np.array([signal.convolve2d(img, kernel, 'same') for kernel in kernels])
+
+    @staticmethod
+    def _get_average_values_for_every_pixel(img, number_kernels):
+        """
+        :param img: the image to be used in order to calculate averaged images
+        :param number_kernels: number of kernels to be used in order to calculate the averaged images
+        :return: averaged images with the shape:
+                 (image height * image width, number averaged images)
+                 Every row represents one pixel and its averaged values.
+                 I. e. x[0] represents the first pixel and contains an array with k
+                 averaged pixels where k are the number of used kernels.
+        """
+        kernels = ExactHistogramMatcher._kernel_mapping[number_kernels]
+        averaged_images = ExactHistogramMatcher._get_averaged_images(img, kernels)
+        img_size = averaged_images[0].shape[0] * averaged_images[0].shape[1]
+
+        # shape of averaged_images: (number averaged images, height, width).
+        # Reshape in a way, that one row contains all averaged values of pixel in position (x, y)
+        reshaped_averaged_images = averaged_images.reshape((number_kernels, img_size))
+        transposed_averaged_images = reshaped_averaged_images.transpose()
+        return transposed_averaged_images
+
+    @staticmethod
+    def sort_rows_lexicographically(matrix):
+        # Because lexsort in numpy sorts after the last row,
+        # then after the second last row etc., we have to rotate
+        # the matrix in order to sort all rows after the first column,
+        # and then after the second column etc.
+
+        rotated_matrix = np.rot90(matrix)
+
+        # TODO lexsort is very memory hungry! If the image is too big, this can result in SIG 9!
+        sorted_indices = np.lexsort(rotated_matrix)
+        return matrix[sorted_indices]
+
+    @staticmethod
+    def _match_to_histogram(image, reference_histogram, number_kernels):
+        """
+        :param image: image as numpy array.
+        :param reference_histogram: reference histogram as numpy array
+        :param number_kernels: The more kernels you use in order to calculate average images,
+                               the more likely it is, the resulting image will have the exact
+                               histogram like the reference histogram
+        :return: The image with the exact reference histogram.
+        """
+        img_size = image.shape[0] * image.shape[1]
+
+        merged_images = np.empty((img_size, number_kernels + 2))
+
+        # The first column are the original pixel values.
+        merged_images[:, 0] = image.reshape((img_size,))
+
+        # The last column of this array represents the flattened image indices.
+        # These indices are necessary to keep track of the pixel positions
+        # after they haven been sorted lexicographically according their values.
+        indices_of_flattened_image = np.arange(img_size).transpose()
+        merged_images[:, -1] = indices_of_flattened_image
+
+        # Calculate average images and add them to merged_images
+        averaged_images = ExactHistogramMatcher._get_average_values_for_every_pixel(image, number_kernels)
+        for dimension in range(0, number_kernels):
+            merged_images[:, dimension + 1] = averaged_images[:, dimension]
+
+        # Sort the array according the original pixels values and then after
+        # the average values of the respective pixel
+        sorted_merged_images = ExactHistogramMatcher.sort_rows_lexicographically(merged_images)
+
+        # Assign gray values according the distribution of the reference histogram
+        index_start = 0
+        for gray_value in range(0, len(reference_histogram)):
+            index_end = int(index_start + reference_histogram[gray_value])
+            sorted_merged_images[index_start:index_end, 0] = gray_value
+            index_start = index_end
+
+        # Sort back ordered by the flattened image index. The last column represents the index
+        sorted_merged_images = sorted_merged_images[sorted_merged_images[:, -1].argsort()]
+        new_target_img = sorted_merged_images[:, 0].reshape(image.shape)
+
+        return new_target_img
+
+    @staticmethod
+    def match_image_to_histogram(image, reference_histogram, number_kernels=3):
+        """
+        :param image: image as numpy array.
+        :param reference_histogram: reference histogram as numpy array
+        :param number_kernels: The more kernels you use in order to calculate average images,
+                               the more likely it is, the resulting image will have the exact
+                               histogram like the reference histogram
+        :return: The image with the exact reference histogram.
+                 CAUTION: Don't save the image in a lossy format like JPEG,
+                 because the compression algorithm will alter the histogram!
+                 Use lossless formats like PNG.
+        """
+        if len(image.shape) == 3:
+            # Image with more than one dimension. I. e. an RGB image.
+            output = np.empty(image.shape)
+            dimensions = image.shape[2]
+
+            for dimension in range(0, dimensions):
+                output[:, :, dimension] = ExactHistogramMatcher._match_to_histogram(image[:, :, dimension],
+                                                                                    reference_histogram[:, dimension],
+                                                                                    number_kernels)
+        else:
+            # Gray value image
+            output = ExactHistogramMatcher._match_to_histogram(image,
+                                                               reference_histogram,
+                                                               number_kernels)
+
+        return output
