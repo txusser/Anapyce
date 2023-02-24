@@ -507,6 +507,91 @@ class spm(object):
 
         # os.system('%s run %s' % (self.spm_path, mfile))
 
+    def create_new_cat12_model(self, save_dir, group1, group1_ages, group1_tivs, group2, group2_ages, group2_tivs,mask):
+
+        mfile_name = join(save_dir, 'cat_12_vbm.m')
+        print(mfile_name)
+        design_type = "matlabbatch{1}.spm.tools.cat.factorial_design."
+
+        new_spm = open(mfile_name, "w")
+        new_spm.write(
+            design_type + "dir = {'" + save_dir + "/'};" + "\n" +
+            "%%" + "\n" +
+            design_type + "des.t2.scans1 = {" + "\n"
+        )
+
+        for image in group1:
+            new_spm.write("'" + image + ",1'" + "\n")
+        new_spm.write(
+            "};" + "\n" +
+            "%%" + "\n"
+        )
+
+        new_spm.write(design_type + "des.t2.scans2 = {" + "\n")
+
+        for image in group2:
+            new_spm.write("'" + image + ",1'" + "\n")
+        new_spm.write("};" + "\n")
+
+        new_spm.write(
+            design_type + "des.t2.dept = 0;\n" +
+            design_type + "des.t2.variance = 1;\n" +
+            design_type + "des.t2.gmsca = 0;\n" +
+            design_type + "des.t2.ancova = 0;\n")
+
+        new_spm.write(design_type + "cov.c = [")
+        for age in group1_ages:
+            new_spm.write(str(age) + "\n")
+        for age in group2_ages:
+            new_spm.write(str(age) + "\n")
+        new_spm.write("];\n")
+
+        new_spm.write(
+            design_type + "cov.cname = 'Age';" + "\n" +
+            design_type + "cov.iCFI = 1;" + "\n" +
+            design_type + "cov.iCC = 5;" + "\n")
+
+        new_spm.write(design_type + "multi_cov = struct('files', {}, 'iCFI', {}, 'iCC', {});\n")
+
+        new_spm.write(
+            design_type + "masking.tm.tm_none = 1;\n" +
+            design_type + "masking.im = 1;\n")
+
+        new_spm.write(design_type + "masking.em = {'" + mask + "'}\n;")
+
+        new_spm.write(design_type + "globals.g_ancova.global_uval = [")
+        for tiv in group1_tivs:
+            new_spm.write(str(tiv) + "\n")
+        for tiv in group2_tivs:
+            new_spm.write(str(tiv) + "\n")
+        new_spm.write("];\n")
+
+        new_spm.write(
+            design_type + "check_SPM.check_SPM_zscore.do_check_zscore.use_unsmoothed_data = 1;\n" +
+            design_type + "check_SPM_zscore.do_check_zscore.adjust_data = 1;\n" +
+            design_type + "check_SPM.check_SPM_ortho = 1;\n")
+
+
+        spm_mat = join(save_dir,'SPM.mat')
+        design_type = "matlabbatch{2}.spm.stats.fmri_est."
+
+        new_spm.write(design_type + "spmmat = {'" + spm_mat + "'};\n")
+        new_spm.write(design_type + "write_residuals = 0;")
+        new_spm.write(design_type + "method.Classical = 1;")
+
+
+        design_type = "matlabbatch{3}.spm.stats.con."
+        contrast_name = 'Atrophy'
+        contrast = '[1 -1 0 0]'
+
+        new_spm.write(design_type + "spmmat = {'" + spm_mat + "'};\n")
+        new_spm.write(design_type + "consess{1}.tcon.name = '" + contrast_name + "';\n")
+        new_spm.write(design_type + "consess{1}.tcon.weights =" + contrast + ";\n")
+        new_spm.write(design_type + "consess{1}.tcon.sessrep = 'none';\n")
+        new_spm.write(design_type + "delete = 0;\n")
+
+        new_spm.close()
+
     @staticmethod
     def create_mfile_model_pet_with_1_cov(mfile_name, save_dir, group1, group1_ages, group2, group2_ages,
                                           mask, dependence=0, variance=1, gmscaling=0, ancova=0, global_norm=1):
