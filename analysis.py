@@ -183,7 +183,7 @@ class analysis(object):
         qc_utils._check_image_exists(input_image)
 
         pons_img = nib.load(ref_region).get_fdata()
-        pons_img = pons_img[:, :, :, 0]
+        pons_img = pons_img[:, :, :]
         pons_vox = np.where(pons_img == 1)
 
         input_img = nib.load(input_image)
@@ -219,7 +219,10 @@ class analysis(object):
 
         fdg_data = fdg.get_fdata()
         template_data = template.get_fdata()
-        mask_data = mask.get_fdata()[:, :, :, 0]
+        if len(mask.shape)==4:
+            mask_data = mask.get_fdata()[:, :, :,0]
+        else:
+            mask_data = mask.get_fdata()[:, :, :]
 
         indx = np.where(mask_data == 1)
         mean_template = np.mean(template_data[indx])

@@ -5,6 +5,7 @@ import nibabel as nib
 from os.path import join, exists, dirname
 from qc_utils import qc_utils
 
+
 class spm(object):
 
     def __init__(self, spm_exe):
@@ -129,20 +130,19 @@ class spm(object):
 
         return output_1, transformation_matrix
 
-    def new_deformations(self, def_matrix, base_image, images_to_deform, interpolation):
+    def new_deformations(self, def_matrix, images_to_deform, interpolation, prefix='w'):
 
         source_img_path, source_img_name = os.path.split(images_to_deform[0])
         # Set the output file name
         mfile_name = join(source_img_path, 'deformations.m')
 
-        design_type_comp = "matlabbatch{1}.spm.util.defs.comp{1}.inv."
+        design_type_comp = "matlabbatch{1}.spm.util.defs.comp{1}."
         design_type_out = "matlabbatch{1}.spm.util.defs.out{1}."
 
         new_spm = open(mfile_name, "w")
 
         new_spm.write(
-            design_type_comp + "comp{1}.def = {'" + def_matrix + "'};\n" +
-            design_type_comp + "space = {'" + base_image + "'};\n" +
+            design_type_comp + "def = {'" + def_matrix + "'};\n" +
             design_type_out + "pull.fnames = {" + "\n"
         )
 
@@ -151,10 +151,11 @@ class spm(object):
         new_spm.write("};\n")
 
         new_spm.write(
-            design_type_out + "pull.savedir.saveusr = {'" + source_img_path + "'};\n" +
+            design_type_out + "pull.savedir.savesrc = 1;\n" +
             design_type_out + "pull.interp =" + str(interpolation) + ";\n" +
             design_type_out + "pull.mask = 0;\n" +
-            design_type_out + "pull.fwhm = [0 0 0];\n"
+            design_type_out + "pull.fwhm = [0 0 0];\n" +
+            design_type_out + "pull.prefix ='" + prefix + "';\n"
         )
 
         new_spm.close()
@@ -194,7 +195,7 @@ class spm(object):
 
         os.system('%s run %s' % (self.spm_path, mfile_name))
 
-    def apply_normalization_to_fs(self, def_matrix, norm_mri, fs_atlas):
+    def apply_normalization_to_atlas(self, def_matrix, norm_mri, fs_atlas):
 
         source_img_path, source_img_name = os.path.split(fs_atlas)
         # Set the output file name
@@ -272,6 +273,7 @@ class spm(object):
         self.create_mfile_model_pet_with_1_cov(mfile_model, save_dir, group1, group1_ages, group2, group2_ages,
                                                mask, dependence, variance, gmscaling, ancova, global_norm)
 
+        print('%s run %s' % (self.spm_path, mfile_model))
         os.system('%s run %s' % (self.spm_path, mfile_model))
 
         print('Estimating model....')
@@ -355,7 +357,7 @@ class spm(object):
 
         source_img_path, source_img_name = os.path.split(images_to_smooth[0])
         # Set the output file name
-        mfile_name = join(source_img_path, 'smooth.m')
+        mfile_name = 'smooth.m'
 
         design_type = "matlabbatch{1}.spm.spatial.smooth."
         smoothing_array = "[" + str(smoothing[0]) + " " + str(smoothing[1]) + " " + str(smoothing[2]) + "]"
@@ -378,8 +380,7 @@ class spm(object):
 
         os.system('%s run %s' % (self.spm_path, mfile_name))
 
-    @staticmethod
-    def create_mfile_cat12seg_multiple_imgs(mfile, images_to_seg, template_tpm, template_volumes,
+    def create_mfile_cat12seg_multiple_imgs(self, mfile, images_to_seg, template_tpm, template_volumes,
                                             number_of_cores=4, biasacc=0.5, APP=1070, kamap=0, LASstr=0.5,
                                             gcutstr=2, WMHC=1, regstr=0.5, output_vox_size=1,
                                             restypes_optimal="[1 0.1]", out_surf=1, out_surf_measure=1,
@@ -408,7 +409,7 @@ class spm(object):
 
         design_type = "matlabbatch{1}.spm.tools.cat.estwrite."
 
-        new_spm = open(mfile, "a")
+        new_spm = open(mfile, 'w')
 
         new_spm.write(design_type + "data = {\n")
         for i in range(len(images_to_seg)):
@@ -504,6 +505,8 @@ class spm(object):
         new_spm.write("spm_jobman('run',matlabbatch);\n")
         new_spm.close()
 
+        # os.system('%s run %s' % (self.spm_path, mfile))
+
     @staticmethod
     def create_mfile_model_pet_with_1_cov(mfile_name, save_dir, group1, group1_ages, group2, group2_ages,
                                           mask, dependence=0, variance=1, gmscaling=0, ancova=0, global_norm=1):
@@ -550,7 +553,7 @@ class spm(object):
             design_type + "cov.iCC = 5;" + "\n" +
             design_type + "multi_cov = struct('files', {}, 'iCFI', {}, 'iCC', {});" + "\n" +
             design_type + "masking.tm.tm_none = 1;" + "\n" +
-            design_type + "masking.im = 1;" + "\n" +
+            design_type + "masking.im = 0;" + "\n" +
             design_type + "masking.em = {'" + mask + ",1'};" + "\n" +
             design_type + "globalc.g_omit = 1;" + "\n" +
             design_type + "globalm.gmsca.gmsca_no = 1;" + "\n" +
@@ -623,7 +626,7 @@ class spm(object):
         new_spm.write(
             design_type + "multi_cov = struct('files', {}, 'iCFI', {}, 'iCC', {});" + "\n" +
             design_type + "masking.tm.tm_none = 1;" + "\n" +
-            design_type + "masking.im = 1;" + "\n" +
+            design_type + "masking.im = 0;" + "\n" +
             design_type + "masking.em = {'" + mask + ",1'};" + "\n" +
             design_type + "globalc.g_omit = 1;" + "\n" +
             design_type + "globalm.gmsca.gmsca_no = 1;" + "\n" +
